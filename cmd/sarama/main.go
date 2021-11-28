@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/Shopify/sarama"
 	"github.com/labstack/echo/v4"
-	sarama "gopkg.in/Shopify/sarama.v1"
 )
 
 func ConnectProducer(brokersUrl []string) (sarama.SyncProducer, error) {
@@ -23,7 +23,7 @@ func ConnectProducer(brokersUrl []string) (sarama.SyncProducer, error) {
 }
 
 func PushCommentToQueue(topic string, message []byte) error {
-	brokersUrl := []string{"kafkahost1:9092", "kafkahost2:9092"}
+	brokersUrl := []string{"0.0.0.0:9092"}
 	producer, err := ConnectProducer(brokersUrl)
 	if err != nil {
 		return err
@@ -44,34 +44,41 @@ func PushCommentToQueue(topic string, message []byte) error {
 type Comment struct {
 	Text string `form:"text" json:"text"`
 }
+type response struct {
+	success bool   `json:"success"`
+	message string `json:"message"`
+	comment string `json:"comment"`
+}
 
 func createComment(c echo.Context) error {
 	// Instantiate new Message struct
 	cmt := new(Comment)
 	if err := c.Bind(cmt); err != nil {
-		m := new(map{
-			"success": false,
-			"message": err,
-		})
-		c.JSON(http.StatusBadRequest, m)
+		fmt.Println("cmt error:", cmt)
+		res := response{
+			success: false,
+			message: err.Error(),
+		}
+		c.JSON(http.StatusBadRequest, res)
 		return err
 	}
+	fmt.Println("cmt:", *cmt)
 	// convert body into bytes and send it to kafka
-	cmtInBytes, err := json.Marshal(cmt)
+	cmtInBytes, err := json.Marshal(*cmt)
 	PushCommentToQueue("comments", cmtInBytes)
 	// Return Comment in JSON format
-	m := new(map{
-		"success": true,
-		"message": "Comment pushed successfully",
-		"comment": cmt,
-	})
-	c.JSON(http.StatusOK, m)
+	res := response{
+		success: true,
+		message: "Comment pushed successfully",
+		comment: cmt.Text,
+	}
+	c.JSON(http.StatusOK, res)
 	if err != nil {
-		m := new(map{
-			"success": false,
-			"message": "Error creating product",
-		})
-		c.JSON(http.StatusGatewayTimeout, m)
+		res := response{
+			success: false,
+			message: "Error creating product",
+		}
+		c.JSON(http.StatusGatewayTimeout, res)
 		return err
 	}
 	return err
